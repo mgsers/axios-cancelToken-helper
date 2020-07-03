@@ -27,3 +27,57 @@ service.interceptors.response.use(response => {
 })
 ```
 
+源码解读
+
+```js
+// 在请求之前先判断是否设置config.cancelToken，有则监听cancelToken实例的promise
+// 如果其promise resolve之后，则调用request的abort方法切断请求
+if (config.cancelToken) {
+  // Handle cancellation
+  config.cancelToken.promise.then(function onCanceled(cancel) {
+    if (!request) {
+      return;
+    }
+
+    request.abort();
+    reject(cancel);
+    // Clean up request
+    request = null;
+  });
+}
+// cancelToken文件
+function CancelToken(executor) {
+  if (typeof executor !== 'function') {
+    throw new TypeError('executor must be a function.');
+  }
+  // 这里的就是上述监听的promise，把这个promise的执行权交给resolvePromise变量，并暴露给executor函数
+  // executor执行则resolve promise，从而触发上述request.abort方法
+  var resolvePromise;
+  this.promise = new Promise(function promiseExecutor(resolve) {
+    resolvePromise = resolve;
+  });
+
+  var token = this;
+  executor(function cancel(message) {
+    if (token.reason) {
+      // Cancellation has already been requested
+      return;
+    }
+
+    token.reason = new Cancel(message);
+    resolvePromise(token.reason);
+  });
+}
+// 只是一个包装的语法糖，方便调用
+CancelToken.source = function source() {
+  var cancel;
+  var token = new CancelToken(function executor(c) {
+    cancel = c;
+  });
+  return {
+    token: token,
+    cancel: cancel
+  };
+};
+```
+
